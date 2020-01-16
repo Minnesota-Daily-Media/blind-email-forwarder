@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Google API Credentials
+credentials.json
+
+# Google API Token
+token.pickle
