@@ -43,23 +43,59 @@ def GetMessage(service, msg_id):
     to_email = [i['value'] for i in headers if i['name']=='To']
     from_email = [i['value'] for i in headers if i['name']=='From']
 
-    parsed_to_email = re.split('@', str(to_email))
 
-    if('feedback.mndaily.com' in parsed_to_email[1]):
+    if('<' in from_email[0]):
+        parsed_from = re.findall("\<(.*?)\>", from_email[0])
+        from_email = parsed_from[0]
+
+    if('<' in to_email[0]):
+        parsed_to = re.findall("\<(.*?)\>", to_email[0])
+        to_email = parsed_to[0]
+
+    parsed_to_email = re.split('@', to_email[0])
+
+    if(parsed_to_email[1] == 'feedback.mndaily.com'):
         #lookup and forward
-        alias = parsed_to_email[0][2:]
-        print(alias)
-    elif(("MNDaily Feedback" in parsed_to_email[0] or parsed_to_email[0] == 'feedback') and 'mndaily.com' in parsed_to_email[1]):
+        alias = parsed_to_email[0]
+        alias = alias + '@feedback.mndaily.com'
+
+        cursor = db.cursor()
+
+        sql = "SELECT email FROM emailalias WHERE alias = %s"
+        val = (str(alias),)
+
+        cursor.execute(sql, val)
+
+        result = cursor.fetchall()
+
+        for x in result:
+            sender = x[0]
+
+        message_raw = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
+
+        msg_str = base64.urlsafe_b64decode(message_raw['raw'].encode('UTF-8'))
+        mime_msg = email.message_from_bytes(msg_str)
+
+   
+        body_message = mime_msg.get_payload(1).get_payload(decode=True)
+
+        body_message = str(body_message)
+        body_message = body_message[2:]
+    
+
+        SendMessage(service, body_message, sender, 'feedback@mndaily.com', 'feedback@mndaily.com', 'Re: Feedback Received')
+
+
+    elif((parsed_to_email[0] == 'feedback') and parsed_to_email[1] == 'mndaily.com'):
         #create a alias and forward to gm@mndaily.com
         alias = randomString()
         alias = alias + '@feedback.mndaily.com'
 
-        print(alias)
 
         cursor = db.cursor()
 
         sql = "INSERT INTO emailalias (email, alias) VALUES (%s, %s)"
-        val = (str(from_email), alias)
+        val = (from_email, alias)
         cursor.execute(sql, val)
 
         db.commit()
