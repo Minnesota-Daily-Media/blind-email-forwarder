@@ -133,3 +133,6 @@ credentials.json
 
 # Google API Token
 token.pickle
+
+# MySQL Credentials
+mysql.json

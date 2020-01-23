@@ -4,6 +4,10 @@ import os.path
 import base64
 import email
 import re
+import mysql.connector
+import json
+import random
+import string
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -14,68 +18,75 @@ from bs4 import BeautifulSoup
 
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
+with open("./mysql.json", "r") as handler:
+    mysql_creds = json.load(handler)
+
+mysql_user = mysql_creds["user"]
+mysql_pass = mysql_creds["password"]
+
+db = mysql.connector.connect(
+    host="localhost",
+    database="mndailyemailalias",
+    user=mysql_user,
+    passwd=mysql_pass
+)
+
+def randomString(stringLength=10):
+    letters = string.ascii_lowercase
+    return ''.join(random.choice(letters) for i in range(stringLength))
+
 def GetMessage(service, msg_id):
     message = service.users().messages().get(userId='me', id=msg_id).execute()
 
     headers = message['payload']['headers']
 
     to_email = [i['value'] for i in headers if i['name']=='To']
+    from_email = [i['value'] for i in headers if i['name']=='From']
 
-    parsed_email = re.split('@', to_email)
+    parsed_to_email = re.split('@', str(to_email))
 
-    if(parsed_email[1] == 'feedback.mndaily.com'):
-        pass
-        #lookup and Forward
-    elif(parsed_email[0] == 'feedback' and parsed_email[1] == 'mndaily.com'):
-        pass
+    if('feedback.mndaily.com' in parsed_to_email[1]):
+        #lookup and forward
+        alias = parsed_to_email[0][2:]
+        print(alias)
+    elif(("MNDaily Feedback" in parsed_to_email[0] or parsed_to_email[0] == 'feedback') and 'mndaily.com' in parsed_to_email[1]):
         #create a alias and forward to gm@mndaily.com
+        alias = randomString()
+        alias = alias + '@feedback.mndaily.com'
 
-    #print('To: %s' % to_email[0])
+        print(alias)
 
-    '''
-    message_parts = message['payload']['parts']
-    part_one = message_parts[0]
-    part_body = part_one['body']
-    part_data = part_body['data']
-    clean_one = part_data.replace("-","+")
-    clean_one = clean_one.replace("_","/")
-    clean_two = base64.b64decode(bytes(clean_one, 'UTF-8'))
-    soup = BeautifulSoup(clean_two, "lxml")
-    message_body = soup.body()
-    body_message = '';
-    '''
+        cursor = db.cursor()
 
-    message_raw = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
+        sql = "INSERT INTO emailalias (email, alias) VALUES (%s, %s)"
+        val = (str(from_email), alias)
+        cursor.execute(sql, val)
 
-    msg_str = base64.urlsafe_b64decode(message_raw['raw'].encode('UTF-8'))
-    mime_msg = email.message_from_bytes(msg_str)
+        db.commit()
 
-    #for part in mime_msg.walk():
-    #    if(part.get_content_type() == 'text/html'):
-    #        body_message = part
+        print(cursor.rowcount, "record inserted")
 
-    #print(type(body_message))
-    #print(str(body_message))
-    #print(mime_msg.get_payload(1))
-    body_message = mime_msg.get_payload(1).get_payload(decode=True)
 
-    body_message = str(body_message)
-    body_message = body_message[2:]
-    #print(mime_msg)
+        message_raw = service.users().messages().get(userId='me', id=msg_id, format='raw').execute()
 
-    #print("Message body: %s" % message_body)
+        msg_str = base64.urlsafe_b64decode(message_raw['raw'].encode('UTF-8'))
+        mime_msg = email.message_from_bytes(msg_str)
 
-    #for p_tag in soup.find_all('p'):
-    #    #print(p_tag.text, p_tag.next_sibling)
-    #    body_message = body_message + p_tag.text
+   
+        body_message = mime_msg.get_payload(1).get_payload(decode=True)
 
-    SendMessage(service, body_message, 'nknudsen@mndaily.com', 'feedback@mndaily.com', 'Test Forward Message')
+        body_message = str(body_message)
+        body_message = body_message[2:]
+    
 
-def SendMessage(service, payloadBody, toAddress, fromAddress, subject):
+        SendMessage(service, body_message, 'nknudsen@mndaily.com', 'feedback@mndaily.com', alias, 'Feedback Received')
+
+def SendMessage(service, payloadBody, toAddress, fromAddress, replyTo, subject):
     message = MIMEText(payloadBody, 'html')
     message['to'] = toAddress
     message['from'] = fromAddress
     message['subject'] = subject
+    message.add_header('reply-to', replyTo)
 
     message_raw = {'raw': base64.urlsafe_b64encode(message.as_string().encode()).decode()}
 
