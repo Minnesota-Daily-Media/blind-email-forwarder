@@ -3,6 +3,7 @@ import pickle
 import os.path
 import base64
 import email
+import re
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -19,6 +20,15 @@ def GetMessage(service, msg_id):
     headers = message['payload']['headers']
 
     to_email = [i['value'] for i in headers if i['name']=='To']
+
+    parsed_email = re.split('@', to_email)
+
+    if(parsed_email[1] == 'feedback.mndaily.com'):
+        pass
+        #lookup and Forward
+    elif(parsed_email[0] == 'feedback' and parsed_email[1] == 'mndaily.com'):
+        pass
+        #create a alias and forward to gm@mndaily.com
 
     #print('To: %s' % to_email[0])
 
